@@ -1,6 +1,11 @@
 ## run
+----
 make 
+
 sudo insmod hello.ko
+
 #dmesg | tail
-sudo rmsmod hello
+
+sudo rmmod hello
+
 #dmesg | tail
