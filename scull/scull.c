@@ -84,6 +84,34 @@ int scull_trim(struct scull_dev *dev)
 	return 0;
 }
 
+int scull_read_procmem(char *buf , char **start, off_t offset, 
+		int count, int *eof, void *data)
+{
+	int i, j , len = 0;
+	int limit = count - 80;
+	for (i = 0; i < scull_nr_devs && len <= limit; i++) {
+		struct scull_dev *d = &scull_devices[i];
+		struct scull_qset *qs = d->data;
+		if (down_interruptible(&d->sem))
+			return -ERESTARTSYS;
+		len += sprintf(buf + len, "\nDevice %i: qset %i, q %i, sz %li\n", 
+				i, d->qset, d->quantum, d->size);
+		for (; qs && len <= limit; qs = qs->next) {
+			len += sprintf(buf + len, "item at %p, qset at %p\n",
+					qs, qs->data);
+			if (qs->data && !qs->next) 
+				for (j = 0; j < d->qset; j++) {
+					if (qs->data[j])
+						len += sprintf(buf + len, "	%4i: %8p\n",
+								j , qs->data[j]);
+				}
+		}
+		up(&scull_devices[i].sem);
+	}
+	*eof = 1;
+	return len;
+}
+
 loff_t scull_llseek(struct file *filp, loff_t off, int whence)
 {
 	struct scull_dev *dev = filp->private_data;
@@ -262,6 +290,8 @@ void scull_cleanup_module(void)
 {
 	int i;
 	dev_t devno = MKDEV(scull_major , scull_minor);
+	
+	remove_proc_entry("scullmem", NULL);
 
 	if (scull_devices) {
 		for (i =0 ; i < scull_nr_devs; i++) {
@@ -306,6 +336,7 @@ int scull_init_module(void)
 		sema_init(&scull_devices[i].sem, 1);
 		scull_setup_cdev(&scull_devices[i], i);
 	}
+	create_proc_read_entry("scullmem", 0, NULL, scull_read_procmem, NULL);
 
 	return 0;
 fail:
