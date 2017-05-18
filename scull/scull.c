@@ -138,6 +138,86 @@ loff_t scull_llseek(struct file *filp, loff_t off, int whence)
 	return newpos;
 }
 
+long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	PDEBUG("%s enter\n",  __FUNCTION__);
+	int err = 0, tmp;
+	int retval = 0;
+
+	PDEBUG("%s enter cmd %d, %d\n",  __FUNCTION__, cmd, SCULL_IOCGQUANTUM);
+	if (_IOC_TYPE(cmd) != SCULL_IOC_MAGIC) 
+		return -ENOTTY;
+
+	if (_IOC_NR(cmd) > SCULL_IOC_MAXNR)
+		return -ENOTTY;
+
+	if (_IOC_DIR(cmd) & _IOC_READ)
+		err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+	else if(_IOC_DIR(cmd) & _IOC_WRITE)
+		err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+
+	if (err)
+		return -EFAULT;
+
+	switch(cmd) {
+	case SCULL_IOCRESET:
+		PDEBUG("%s, SCULL_IOCRESET\n", __FUNCTION__);
+		scull_quantum = SCULL_QUANTUM;
+		scull_qset = SCULL_QSET;
+		break;
+
+	case SCULL_IOCSQUANTUM:
+		PDEBUG("%s, SCULL_IOCSQUANTUM\n", __FUNCTION__);
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		retval = __get_user(scull_quantum, (int __user *)arg);
+		break;
+
+	case SCULL_IOCTQUANTUM:
+		PDEBUG("%s, SCULL_IOCTQUANTUM\n", __FUNCTION__);
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		scull_quantum = arg;
+		break;
+
+	case SCULL_IOCGQUANTUM:
+		PDEBUG("%s, SCULL_IOCGQUANTUM\n", __FUNCTION__);
+		retval = __put_user(scull_quantum, (int __user *)arg);
+		break;
+
+	case SCULL_IOCQQUANTUM:
+		PDEBUG("%s, SCULL_IOCQQUANTUM\n", __FUNCTION__);
+		return scull_quantum;
+
+	case SCULL_IOCXQUANTUM:
+		PDEBUG("%s, SCULL_IOCXQUANTUM\n", __FUNCTION__);
+		if (!capable (CAP_SYS_ADMIN))
+			return -EPERM;
+
+		tmp = scull_quantum;
+		retval = __get_user(scull_quantum, (int __user *)arg);
+		if (retval == 0)
+			retval = __put_user(tmp, (int __user *)arg);
+		break;
+
+	case SCULL_IOCHQUANTUM:
+		PDEBUG("%s, SCULL_IOCHQUANTUM\n", __FUNCTION__);
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
+		tmp = scull_quantum;
+		scull_quantum  = arg;
+		return tmp;
+
+	default:
+		PDEBUG("%s, default\n", __FUNCTION__);
+		return -ENOTTY;
+	}
+
+	PDEBUG("%s, out\n", __FUNCTION__);
+	return retval;
+}
+
 
 int scull_open(struct inode *inode, struct file *filp)
 {
@@ -268,7 +348,7 @@ struct file_operations scull_fops = {
 	.llseek = scull_llseek,
 	.read = scull_read,
 	.write = scull_write,
-//	.iotcl = scull_ioctl,
+	.unlocked_ioctl = scull_ioctl,
 	.open = scull_open,
 	.release = scull_release,
 };
